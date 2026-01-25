@@ -53,3 +53,55 @@ else
 fi
 
 ```
+
+From the master file created by cactus-prepare, I create two files, one that runs `cactus-blast` and another `cactus-align` + `hal2fasta`. The job submission order is based on the cactus-prepare file.
+
+## cactus-blast
+
+```bash
+awk '/cactus-blast/{
+    match($0, /Anc[0-9]+/, arr);
+    anc_num=arr[0];
+    filename="cactus_blast_" anc_num ".sh";
+    
+    # Use double quotes for awk string, and escape double quotes inside the shell command
+    system("sed \"s|NUMBER_PLACEHOLDER|" anc_num "|g\" cactus_blast_template.sh > " filename);
+    
+    # Append the cactus-blast command to the file
+    print >> filename;
+    
+}' /lustre/scratch/frcastel/21families/bin/cactus_prepare_21families.txt
+
+```
+
+
+## cactus-align
+
+
+```bash
+awk '
+/cactus-align/ {
+    match($0, /Anc[0-9]+/, arr);
+    anc_num = arr[0];
+    filename = "cactus_align_" anc_num ".sh";
+
+    # Replace NUMBER_PLACEHOLDER in the template and write it to the file once
+    system("sed \"s/NUMBER_PLACEHOLDER/" anc_num "/g\" cactus_align_template.sh > " filename);
+
+    # Append the cactus-align command to the script
+    print >> filename;
+}
+
+/hal2fasta/ {
+    match($0, /Anc[0-9]+/, arr);
+    anc_num = arr[0];
+    filename = "cactus_align_" anc_num ".sh";  # Same file as cactus-align
+
+    # Append the hal2fasta command to the same file
+    print >> filename;
+}
+' /lustre/scratch/frcastel/21families/bin/cactus_prepare_21families.txt
+
+
+```
+
