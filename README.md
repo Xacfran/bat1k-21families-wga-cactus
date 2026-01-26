@@ -2,19 +2,15 @@
 
 The alignment was accomplished with Progressive Cactus v2.6.13. The approach shown in this repo follows the steps detailed by the software authors: https://github.com/ComparativeGenomicsToolkit/cactus/blob/master/doc/progressive.md
 
-The modification to that workflow detailed below intend to split the workload into different jobs to speed up the alignment process. This should not be necessary for newer Cactus versions by using the newer `--script` flag. 
+The code in this repo intends to split the workload into different jobs to speed up the alignment process. This should not be necessary in newer Cactus versions with the newer `--script` flag. 
 
 ## cactus-prepare
 
-
-
+The following bash script creates the master file with the step-by-step code that creates the final WGA. 
 
 ```bash
-# Set certificates path to avoid cactus being killed because of certificate verification failures
+# Set certificates path to avoid cactus being killed because of certificate verification failures. Probably not needed in your cluster
 export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-
-# Set try
-set -o nounset -o errexit -o xtrace
 
 #Set directory
 cd /path/to/dir/ || exit
@@ -37,14 +33,14 @@ else
     mkdir -p $WORKDIR
 fi
 
-#if cactus_prepare_matador.txt and cactus_matador/0 exist, then move to next command
+#if cactus_prepare_21families.txt and cactus_matador/0 exist, then move to next command
 if [ -f $CACTUS_PREPARE_FILE ] && [ -d $WORKDIR/0 ]; then
     echo "# $CACTUS_PREPARE_FILE and $WORKDIR/0 already exist. Running cactus pipeline"
 else
     # Get commands for the cactus pipeline
     singularity run -B $(pwd):$(pwd) $CONTAINER/cactus_v2.6.13.sif cactus-prepare bin/"$SEQFILE" --outDir $WORKDIR --jobStore $WORKDIR --outSeqFile $WORKDIR/"$OUTSEQFILE" --outHal $WORKDIR/"${OUTPUTHAL}" --cactusOptions "$CACTUS_OPTIONS" > bin/"$CACTUS_PREPARE_FILE"
 
-    # wait until cactus_prepare_matador.txt is created and then move to next command
+    # wait until cactus_prepare_21families.txt is created and then move to next command
     while [ ! -f bin/"$CACTUS_PREPARE_FILE" ]; do
         sleep 1
     done
@@ -67,10 +63,11 @@ name2 path2
 nameN pathN
 ```
 
-From the master file created by cactus-prepare, I then created two files: one that contains the `cactus-blast` runs and another  with `cactus-align` + `hal2fasta`. The order in which these jobs were submitted was based on the cactus-prepare file.
+From the master file, I then proceeded to create files that contained the `cactus-blast` runs on one hand, and `cactus-align` + `hal2fasta` on the other. The order in which these jobs were submitted was based on the cactus-prepare file.
 
 ## cactus-blast
 
+To create multiple bash scripts, only to run `cactus-blast`: 
 
 ```bash
 awk '/cactus-blast/{
@@ -87,10 +84,11 @@ awk '/cactus-blast/{
 }' /path/to/dir/cactus_prepare_21families.txt
 
 ```
-
+This creates several files named `cactus_blast_Ancxxxx.sh` based on the number of ancestors present in the tree. The `cactus_blast_template.sh` file only contains the SLURM script header.  
 
 ## cactus-align
 
+To create multiple bash scripts, only to run `cactus-blast`: 
 
 ```bash
 awk '
@@ -115,13 +113,16 @@ awk '
     print >> filename;
 }
 ' /path/to/dir/cactus_prepare_21families.txt
-
-
 ```
+This creates several files named `cactus_align_Ancxxxx.sh` based on the number of ancestors present in the tree. The `cactus_align_template.sh` file only contains the SLURM script header.  
+
+## Submitting the jobs
+
+Because cactus-align for AncX can only be run after cactus-blast has been completed, I submitted all `cactus_blast_Ancxxxx.sh` in "Step 1" of the cactus-prepare file, and only then could `cactus_align_Ancxxxx.sh` be submitted. Same for Step 2, 3, all the way to Step n. 
 
 ## hal2maf
 
-The alignment projection onto *Homo sapiens* is shown below, and only the `--refGenome` flag changed for *Myotis myotis* (HLmyoMyo6) and *Rhinolophus ferummequinum* (HLrhiFer5).
+The result of the code above is a HAL. To transform it into a MAF the alignment was projected onto *Homo sapiens* as shown below. For other reference genomes, only the `--refGenome` flag changed for *Myotis myotis* (HLmyoMyo6) and *Rhinolophus ferummequinum* (HLrhiFer5).
 
 ```bash
 # Set tmpdir so Toil detects it
@@ -136,5 +137,4 @@ readonly CONTAINER=/path/to/container/
 
 # Export to MAF
 singularity run -B $(pwd):$(pwd) $CONTAINER/cactus_v2.9.2.sif cactus-hal2maf ./js 21batfamilies_2025_v1.hal 21batfamilies_2025_v1_hg38.maf.gz --defaultDisk 200G --maxDisk 500G --workDir $(pwd)/toil-tmp --chunkSize 50000 --batchCores $SLURM_NTASKS --batchCount $SLURM_NTASKS --batchParallelTaf $SLURM_NTASKS --noAncestors --caching F --filterGapCausingDupes --refGenome hg38 --logFile 21batfamilies_2025_v1_hg38.maf.gz.log --cleanWorkDir onSuccess
-
 ```
