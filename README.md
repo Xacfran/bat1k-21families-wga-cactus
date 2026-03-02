@@ -88,7 +88,7 @@ This creates several files named `cactus_blast_Ancxxxx.sh` based on the number o
 
 ## cactus-align
 
-To create multiple bash scripts, only to run `cactus-blast`: 
+To create multiple bash scripts, only to run `cactus-align`: 
 
 ```bash
 awk '
